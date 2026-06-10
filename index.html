@@ -4,8 +4,151 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>cute.tech</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      cursor: none;
+      min-height: 100vh;
+      background-color: #fef9f0;
+      background-image: radial-gradient(circle, #d4c8e8 1px, transparent 1px);
+      background-size: 16px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      font-family: 'Press Start 2P', monospace;
+    }
+
+    h1 {
+      font-size: 16px;
+      color: #c9b8f7;
+      letter-spacing: 1px;
+      text-shadow: 2px 2px 0 #a89ad4;
+      position: relative;
+      z-index: 1;
+      user-select: none;
+    }
+
+    #cursor-eyes {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      display: flex;
+      gap: 4px;
+      transform: translate(-50%, -50%);
+      visibility: hidden;
+    }
+
+    .eye {
+      width: 22px;
+      height: 22px;
+      background: #fffaf5;
+      border: 2px solid #c9b8f7;
+      position: relative;
+      image-rendering: pixelated;
+    }
+
+    .pupil {
+      width: 8px;
+      height: 8px;
+      background: #2a1a3a;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      transition: transform 0.08s linear;
+      image-rendering: pixelated;
+    }
+
+    .pixel-float {
+      position: fixed;
+      bottom: -10px;
+      pointer-events: none;
+      animation: floatUp linear infinite;
+      opacity: 0;
+      image-rendering: pixelated;
+    }
+
+    @keyframes floatUp {
+      0%   { transform: translateY(0)      translateX(0);              opacity: 0;    }
+      8%   {                                                             opacity: 0.35; }
+      92%  {                                                             opacity: 0.25; }
+      100% { transform: translateY(-110vh) translateX(var(--drift, 0)); opacity: 0;    }
+    }
+  </style>
 </head>
 <body>
-  cute.tech
+
+  <h1>cute.tech</h1>
+
+  <div id="cursor-eyes">
+    <div class="eye"><div class="pupil"></div></div>
+    <div class="eye"><div class="pupil"></div></div>
+  </div>
+
+  <script>
+    const eyes   = document.getElementById('cursor-eyes');
+    const pupils = document.querySelectorAll('.pupil');
+    let mx = 0, my = 0;
+    let stopTimer = null;
+
+    document.addEventListener('mousemove', e => {
+      const vx = e.clientX - mx;
+      const vy = e.clientY - my;
+      mx = e.clientX;
+      my = e.clientY;
+
+      eyes.style.left = mx + 'px';
+      eyes.style.top  = my + 'px';
+      eyes.style.visibility = 'visible';
+
+      const speed = Math.sqrt(vx * vx + vy * vy);
+      if (speed > 0.5) {
+        const max = 5;
+        const px  = (vx / speed) * Math.min(speed * 0.6, max);
+        const py  = (vy / speed) * Math.min(speed * 0.6, max);
+        pupils.forEach(p => {
+          p.style.transform = `translate(calc(-50% + ${px}px), calc(-50% + ${py}px))`;
+        });
+        clearTimeout(stopTimer);
+        stopTimer = setTimeout(() => {
+          pupils.forEach(p => { p.style.transform = 'translate(-50%, -50%)'; });
+        }, 120);
+      }
+    });
+
+    document.addEventListener('mouseleave', () => { eyes.style.visibility = 'hidden'; });
+    document.addEventListener('mouseenter', () => { eyes.style.visibility = 'visible'; });
+
+    // Spawn background pixel floaters
+    const colors = ['#f7b8c8', '#c9b8f7', '#b8f7d4', '#b8e4f7', '#f7e4b8'];
+    const sizes  = [4, 4, 6, 6, 8];
+
+    for (let i = 0; i < 18; i++) {
+      const el     = document.createElement('div');
+      el.className = 'pixel-float';
+      const s      = sizes[Math.floor(Math.random() * sizes.length)];
+      const color  = colors[Math.floor(Math.random() * colors.length)];
+      const x      = Math.random() * 100;
+      const dur    = 10 + Math.random() * 14;
+      const delay  = -(Math.random() * dur);
+      const drift  = (Math.random() - 0.5) * 60;
+      el.style.cssText =
+        `width:${s}px;height:${s}px;background:${color};` +
+        `left:${x}vw;` +
+        `animation-duration:${dur}s;` +
+        `animation-delay:${delay}s;` +
+        `--drift:${drift}px;`;
+      document.body.appendChild(el);
+    }
+  </script>
 </body>
 </html>
