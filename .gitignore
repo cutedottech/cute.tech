@@ -1,0 +1,22 @@
+# Workshop prototype — reference only, never commit
+CuteTech Workshop/
+
+# macOS
+.DS_Store
+
+# ESP-IDF build artefacts
+firmware/build/
+firmware/managed_components/
+firmware/.espressif/
+firmware/sdkconfig.old
+firmware/dependencies.lock
+
+# Secrets — never commit these
+*.secret
+devices.json
+config.txt
+relay/devices.json
+
+# Node
+node_modules/
+relay/node_modules/

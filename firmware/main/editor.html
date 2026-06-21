@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>edit — cute.tech</title>
+  <style>
+    body { font-family: monospace; margin: 0; padding: 1rem; background: #1a1a2e; color: #eee; box-sizing: border-box; }
+    h2 { color: #e94560; margin-top: 0; }
+    textarea { width: 100%; height: 65vh; font-family: monospace; font-size: 0.85rem; background: #0f3460; color: #eee; border: 1px solid #e94560; border-radius: 8px; padding: 0.75rem; box-sizing: border-box; resize: vertical; tab-size: 2; }
+    .bar { display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: center; }
+    button { padding: 0.5rem 1.2rem; border: none; border-radius: 6px; cursor: pointer; font-family: monospace; font-size: 0.9rem; }
+    #save-btn { background: #e94560; color: #fff; }
+    #preview-btn { background: #0f3460; color: #eee; border: 1px solid #e94560; }
+    #status { margin-left: auto; font-size: 0.85rem; opacity: 0.8; }
+  </style>
+</head>
+<body>
+  <h2>edit page</h2>
+  <textarea id="ed" spellcheck="false"></textarea>
+  <div class="bar">
+    <button id="save-btn" onclick="save()">save</button>
+    <button id="preview-btn" onclick="preview()">preview</button>
+    <span id="status"></span>
+  </div>
+  <script>
+    const ed = document.getElementById("ed");
+    const st = document.getElementById("status");
+
+    fetch("/raw").then(r => r.text()).then(t => { ed.value = t; });
+
+    function save() {
+      st.textContent = "saving…";
+      fetch("/save", { method: "POST", headers: { "Content-Type": "text/html;charset=UTF-8" }, body: ed.value })
+        .then(r => { st.textContent = r.ok ? "saved!" : "error " + r.status; })
+        .catch(() => { st.textContent = "network error"; });
+    }
+
+    function preview() {
+      const w = window.open("", "_blank");
+      w.document.open(); w.document.write(ed.value); w.document.close();
+    }
+
+    ed.addEventListener("keydown", e => {
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const s = ed.selectionStart;
+        ed.value = ed.value.slice(0, s) + "  " + ed.value.slice(ed.selectionEnd);
+        ed.selectionStart = ed.selectionEnd = s + 2;
+      }
+    });
+  </script>
+</body>
+</html>

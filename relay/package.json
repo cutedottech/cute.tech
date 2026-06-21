@@ -1,0 +1,11 @@
+{
+  "name": "cute-tech-relay",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "workerd serve config.capnp"
+  },
+  "devDependencies": {
+    "workerd": "latest"
+  }
+}

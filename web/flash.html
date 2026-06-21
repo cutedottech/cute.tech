@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>flash — cute.tech</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background-color: #fef9f0;
+      background-image: radial-gradient(circle, #d4c8e8 1px, transparent 1px);
+      background-size: 16px 16px;
+      font-family: 'Press Start 2P', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3rem 1rem;
+      gap: 2rem;
+    }
+
+    h1 { font-size: 1.2rem; color: #5a3e8c; text-align: center; line-height: 1.8; }
+    h1 a { color: #5a3e8c; text-decoration: none; font-size: 0.7rem; opacity: 0.6; }
+    h1 a:hover { opacity: 1; }
+
+    .card {
+      background: white;
+      border: 3px solid #5a3e8c;
+      border-radius: 4px;
+      padding: 1.5rem;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 6px 6px 0 #5a3e8c;
+    }
+
+    .step {
+      display: none;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .step.active { display: flex; }
+
+    .step-label { font-size: 0.5rem; color: #aaa; margin-bottom: 0.25rem; }
+    .step-title { font-size: 0.75rem; color: #5a3e8c; line-height: 1.8; }
+    .step-body { font-size: 0.55rem; color: #555; line-height: 2; }
+
+    esp-web-install-button {
+      --esp-tools-button-color: #5a3e8c;
+      --esp-tools-button-text-color: white;
+    }
+
+    input[type="text"] {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 0.6rem;
+      padding: 0.6rem 0.8rem;
+      border: 2px solid #5a3e8c;
+      border-radius: 2px;
+      width: 100%;
+      background: #fef9f0;
+      color: #333;
+    }
+    input[type="text"]:focus { outline: 2px solid #d4c8e8; }
+    input[type="text"]::placeholder { color: #bbb; }
+
+    .hint { font-size: 0.45rem; color: #aaa; line-height: 2; }
+    .error { font-size: 0.5rem; color: #c0392b; line-height: 2; display: none; }
+
+    button.next {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 0.6rem;
+      padding: 0.7rem 1.2rem;
+      background: #5a3e8c;
+      color: white;
+      border: none;
+      border-radius: 2px;
+      cursor: pointer;
+      box-shadow: 3px 3px 0 #3a2460;
+      align-self: flex-start;
+    }
+    button.next:hover { background: #3a2460; }
+    button.next:disabled { opacity: 0.4; cursor: default; }
+
+    .success { text-align: center; }
+    .success .device-link { font-size: 0.8rem; color: #5a3e8c; text-decoration: none; display: block; margin: 1rem 0; }
+    .success .device-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <h1>
+    <a href="/">← cute.tech</a><br><br>
+    flash your device
+  </h1>
+
+  <div class="card">
+
+    <!-- Step 1: Flash firmware -->
+    <div class="step active" id="step-1">
+      <div class="step-label">step 1 of 3</div>
+      <div class="step-title">install firmware</div>
+      <div class="step-body">
+        plug your ESP32-S3 into USB, then click install.<br>
+        use Chrome or Edge — other browsers don't support WebSerial.
+      </div>
+      <esp-web-install-button manifest="firmware/manifest.json" id="install-btn">
+        <button slot="activate">install firmware</button>
+      </esp-web-install-button>
+      <div class="hint">
+        if you don't see a port dialog, try holding the BOOT button<br>
+        on your device while clicking install.
+      </div>
+    </div>
+
+    <!-- Step 2: WiFi + device name -->
+    <div class="step" id="step-2">
+      <div class="step-label">step 2 of 3</div>
+      <div class="step-title">connect to wifi</div>
+      <div class="step-body">
+        enter the workshop WiFi credentials and choose a name<br>
+        for your device. it will be live at <strong>name.cute.tech</strong>.
+      </div>
+      <input type="text" id="wifi-ssid" placeholder="WiFi name (SSID)" autocomplete="off" spellcheck="false">
+      <input type="text" id="wifi-pass" placeholder="WiFi password" autocomplete="off" spellcheck="false">
+      <input type="text" id="device-name" placeholder="your device name (e.g. toaster)" autocomplete="off" spellcheck="false" maxlength="32">
+      <div class="hint">
+        lowercase letters, numbers, hyphens only. max 32 chars.<br>
+        if someone else picks the same name, last one to connect wins — that's the point.
+      </div>
+      <div class="error" id="name-error"></div>
+      <button class="next" onclick="startProvision()">next →</button>
+    </div>
+
+    <!-- Step 3: Provisioning progress -->
+    <div class="step" id="step-3">
+      <div class="step-label">step 3 of 3</div>
+      <div class="step-title">setting up your device…</div>
+      <div class="step-body" id="provision-status">connecting…</div>
+    </div>
+
+    <!-- Done -->
+    <div class="step success" id="step-done">
+      <div class="step-label">done!</div>
+      <div class="step-title">your device is live</div>
+      <a class="device-link" id="device-link" href="#" target="_blank">—</a>
+      <div class="step-body">
+        go to your link, then visit <strong>/edit</strong> to customise your page.<br>
+        make it yours. ✦
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const RELAY_URL = "https://relay.cute.tech"; // TODO: update when VPS is ready
+    // For development, point at the Cloudflare Worker:
+    // const RELAY_URL = "https://hello-world-relay.ochild242.workers.dev";
+
+    const installBtn = document.getElementById("install-btn");
+
+    // Move to step 2 after successful flash
+    installBtn.addEventListener("state-changed", (e) => {
+      if (e.detail.state === "finished") {
+        showStep("step-2");
+      }
+    });
+
+    function showStep(id) {
+      document.querySelectorAll(".step").forEach(s => s.classList.remove("active"));
+      document.getElementById(id).classList.add("active");
+    }
+
+    async function startProvision() {
+      const ssid = document.getElementById("wifi-ssid").value.trim();
+      const pass = document.getElementById("wifi-pass").value;
+      const name = document.getElementById("device-name").value.trim().toLowerCase();
+      const errEl = document.getElementById("name-error");
+
+      errEl.style.display = "none";
+
+      if (!ssid || !name) {
+        errEl.textContent = "WiFi name and device name are both required.";
+        errEl.style.display = "block";
+        return;
+      }
+      if (!/^[a-z0-9-]{1,32}$/.test(name)) {
+        errEl.textContent = "name must be lowercase letters, numbers, hyphens only.";
+        errEl.style.display = "block";
+        return;
+      }
+
+      showStep("step-3");
+      const status = document.getElementById("provision-status");
+
+      // Generate a random 32-byte hex secret in the browser
+      const secretBytes = crypto.getRandomValues(new Uint8Array(32));
+      const secret = Array.from(secretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+
+      // TODO: This step uses esp-web-tools' Improv WiFi to send WiFi creds,
+      //       then programs an NVS partition image with {name, secret, relay_url}.
+      //       Full implementation requires the NVS partition tooling to be wired up.
+      //       For now, display instructions for manual steps.
+
+      status.textContent = "registering device with relay…";
+
+      try {
+        const res = await fetch(`${RELAY_URL}/register`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            // Note: ADMIN_TOKEN will be provided by the flash page host, not participants
+            // For the workshop, this page will be served with the token embedded or proxied
+            "Authorization": "Bearer WORKSHOP_TOKEN_PLACEHOLDER",
+          },
+          body: JSON.stringify({ name, secret }),
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text);
+        }
+
+        status.textContent = "almost there — device is connecting…";
+
+        // Give device time to connect to relay
+        await sleep(3000);
+
+        const link = `http://${name}.cute.tech`;
+        document.getElementById("device-link").textContent = `${name}.cute.tech`;
+        document.getElementById("device-link").href = link;
+        showStep("step-done");
+
+      } catch (err) {
+        status.textContent = `error: ${err.message}`;
+      }
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  </script>
+
+</body>
+</html>
