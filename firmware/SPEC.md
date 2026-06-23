@@ -1,8 +1,32 @@
 # cute.tech firmware spec
 
-Target board: **Heltec LoRa ESP32-S3** (ESP32-S3 chip, 8MB flash, built-in SSD1306 OLED on I2C)  
-Framework: **ESP-IDF v5.x** (C)  
+Target boards (both use ESP32-S3 chip):
+- **Heltec LoRa ESP32-S3** — 8MB flash, built-in SSD1306 OLED (128×64) on I2C, LoRa radio
+- **Seeed Studio XIAO ESP32-S3 Sense** — 8MB flash, no OLED, camera + microphone, tiny form factor
+
+Framework: **ESP-IDF v6.x** (C)  
 Build: `idf.py set-target esp32s3 && idf.py build`
+
+### Board selection via Kconfig
+
+Select the board at build time using a `CONFIG_BOARD_*` option defined in `Kconfig`. The OLED display is Heltec-only — on XIAO the display functions are compiled out and become no-ops. All other firmware features (HTTP server, relay client, Improv WiFi, NVS config) are identical across boards.
+
+```
+# Build for Heltec:
+idf.py -DSDKCONFIG_DEFAULTS=sdkconfig.heltec build
+
+# Build for XIAO:
+idf.py -DSDKCONFIG_DEFAULTS=sdkconfig.xiao build
+```
+
+Board-specific pin assignments (verify against your exact board revision):
+
+| Signal | Heltec LoRa ESP32-S3 | XIAO ESP32-S3 Sense |
+|--------|----------------------|---------------------|
+| OLED SDA | GPIO 17 | — (no OLED) |
+| OLED SCL | GPIO 18 | — (no OLED) |
+| OLED RST | GPIO 21 | — |
+| Status LED | GPIO 35 (onboard LED) | GPIO 21 (onboard LED) |
 
 ---
 

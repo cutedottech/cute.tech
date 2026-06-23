@@ -1,6 +1,10 @@
 # firmware/
 
-ESP-IDF project for the cute.tech device. Targets **Heltec LoRa ESP32-S3** (ESP32-S3 chip).
+ESP-IDF **v6.x** project for the cute.tech device. Targets two boards (both ESP32-S3):
+- **Heltec LoRa ESP32-S3** — has built-in SSD1306 OLED. Build with `sdkconfig.heltec`.
+- **Seeed Studio XIAO ESP32-S3 Sense** — no OLED, tiny form factor. Build with `sdkconfig.xiao`.
+
+Board is selected at build time via Kconfig (`CONFIG_BOARD_HELTEC` / `CONFIG_BOARD_XIAO`). OLED display code is compiled out on XIAO.
 
 ## What this firmware does
 
@@ -45,6 +49,12 @@ The `CuteTech Workshop/` folder at the repo root is a working prototype using th
 ```bash
 cd firmware
 idf.py set-target esp32s3
-idf.py build
-idf.py flash monitor
+
+# Heltec LoRa ESP32-S3:
+idf.py -DSDKCONFIG_DEFAULTS=sdkconfig.heltec build
+
+# Seeed XIAO ESP32-S3 Sense:
+idf.py -DSDKCONFIG_DEFAULTS=sdkconfig.xiao build
+
+idf.py -p /dev/tty.usbserial-* flash monitor
 ```
