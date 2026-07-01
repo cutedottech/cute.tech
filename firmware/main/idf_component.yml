@@ -1,8 +1,3 @@
-## IDF Component Manager manifest
-##
-## Improv WiFi is implemented directly in main.c (serial protocol is simple enough).
-## If you prefer to use the espressif component instead, add this dependency and
-## replace the improv_task implementation with calls to the component API.
-##
-## dependencies:
-##   espressif/improv_wifi: "^1.0.0"
+dependencies:
+  idf: ">=5.3"
+  joltwallet/littlefs: ">=1.14"

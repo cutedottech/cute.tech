@@ -1,0 +1,13 @@
+{
+  "folders": [
+    { "path": "firmware", "name": "firmware" },
+    { "path": "relay", "name": "relay" },
+    { "path": "web", "name": "web" },
+    { "path": "docs", "name": "docs" }
+  ],
+  "settings": {
+    "idf.currentSetup": "/Users/oliver/.espressif/v6.0.1/esp-idf",
+    "cmake.configureOnOpen": false,
+    "cmake.automaticReconfigure": false
+  }
+}

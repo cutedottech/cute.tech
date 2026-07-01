@@ -101,44 +101,44 @@
 
     <!-- Step 1: Flash firmware -->
     <div class="step active" id="step-1">
-      <div class="step-label">step 1 of 3</div>
-      <div class="step-title">install firmware</div>
+      <div class="step-label">step 1 of 2</div>
+      <div class="step-title">flash firmware</div>
       <div class="step-body">
-        plug your ESP32-S3 into USB, then click install.<br>
+        plug your ESP32-S3 into USB, then click flash firmware.<br>
         use Chrome or Edge — other browsers don't support WebSerial.
       </div>
-      <esp-web-install-button manifest="firmware/manifest.json" id="install-btn">
-        <button slot="activate">install firmware</button>
+      <esp-web-install-button manifest="firmware/manifest.json" id="install-btn" install-supported>
+        <button slot="activate" class="next">flash firmware</button>
       </esp-web-install-button>
       <div class="hint">
         if you don't see a port dialog, try holding the BOOT button<br>
-        on your device while clicking install.
+        on your device while clicking flash firmware.
       </div>
+      <button class="next" id="next-btn">next →</button>
     </div>
 
     <!-- Step 2: WiFi + device name -->
     <div class="step" id="step-2">
-      <div class="step-label">step 2 of 3</div>
-      <div class="step-title">connect to wifi</div>
+      <div class="step-label">step 2 of 2</div>
+      <div class="step-title">configure device</div>
       <div class="step-body">
         enter the workshop WiFi credentials and choose a name<br>
         for your device. it will be live at <strong>name.cute.tech</strong>.
       </div>
       <input type="text" id="wifi-ssid" placeholder="WiFi name (SSID)" autocomplete="off" spellcheck="false">
       <input type="text" id="wifi-pass" placeholder="WiFi password" autocomplete="off" spellcheck="false">
-      <input type="text" id="device-name" placeholder="your device name (e.g. toaster)" autocomplete="off" spellcheck="false" maxlength="32">
+      <input type="text" id="device-name" placeholder="device name (e.g. toaster)" autocomplete="off" spellcheck="false" maxlength="32">
       <div class="hint">
-        lowercase letters, numbers, hyphens only. max 32 chars.<br>
-        if someone else picks the same name, last one to connect wins — that's the point.
+        lowercase letters, numbers, hyphens only. max 32 chars.
       </div>
       <div class="error" id="name-error"></div>
-      <button class="next" onclick="startProvision()">next →</button>
+      <button class="next" id="provision-btn">write config to device →</button>
     </div>
 
-    <!-- Step 3: Provisioning progress -->
+    <!-- Writing config progress -->
     <div class="step" id="step-3">
-      <div class="step-label">step 3 of 3</div>
-      <div class="step-title">setting up your device…</div>
+      <div class="step-label">step 2 of 2</div>
+      <div class="step-title">configure device</div>
       <div class="step-body" id="provision-status">connecting…</div>
     </div>
 
@@ -156,30 +156,73 @@
   </div>
 
   <script>
-    const RELAY_URL = "https://relay.cute.tech"; // TODO: update when VPS is ready
-    // For development, point at the Cloudflare Worker:
-    // const RELAY_URL = "https://hello-world-relay.ochild242.workers.dev";
-
-    const installBtn = document.getElementById("install-btn");
-
-    // Move to step 2 after successful flash
-    installBtn.addEventListener("state-changed", (e) => {
-      if (e.detail.state === "finished") {
-        showStep("step-2");
-      }
-    });
-
     function showStep(id) {
       document.querySelectorAll(".step").forEach(s => s.classList.remove("active"));
       document.getElementById(id).classList.add("active");
     }
 
-    async function startProvision() {
-      const ssid = document.getElementById("wifi-ssid").value.trim();
-      const pass = document.getElementById("wifi-pass").value;
-      const name = document.getElementById("device-name").value.trim().toLowerCase();
-      const errEl = document.getElementById("name-error");
+    document.getElementById("next-btn").addEventListener("click", () => showStep("step-2"));
+    document.getElementById("provision-btn").addEventListener("click", () => {
+      if (window.startProvision) {
+        window.startProvision();
+      } else {
+        alert("Still loading, please wait a moment and try again.");
+      }
+    });
 
+    /* Persist form fields across page refreshes */
+    const FIELDS = ["wifi-ssid", "wifi-pass", "device-name"];
+    document.addEventListener("DOMContentLoaded", () => {
+      FIELDS.forEach(id => {
+        const el = document.getElementById(id);
+        const saved = localStorage.getItem("cute-" + id);
+        if (saved) el.value = saved;
+        el.addEventListener("input", () => localStorage.setItem("cute-" + id, el.value));
+      });
+    });
+  </script>
+
+  <script type="module">
+    import { ESPLoader, Transport } from "/web/esptool.js";
+
+    /* Config partition layout (matches firmware device_config_t):
+       0x000  magic[4]       = "CUTE" (0x45545543 LE)
+       0x004  ssid[64]       null-terminated
+       0x044  password[64]   null-terminated
+       0x084  device_name[33] null-terminated
+       0x0A5  relay_url[128] null-terminated
+       Total: 0x125 bytes, padded to 4096 */
+    const CONFIG_PARTITION_ADDR = 0x310000;
+    const CONFIG_PARTITION_SIZE = 4096;
+    const RELAY_URL = "https://relay.cute.tech";
+
+    function buildConfigBinary(ssid, password, deviceName, relayUrl) {
+      const buf = new Uint8Array(CONFIG_PARTITION_SIZE);
+      const enc = new TextEncoder();
+
+      /* magic "CUTE" as little-endian uint32 */
+      buf[0] = 0x43; buf[1] = 0x55; buf[2] = 0x54; buf[3] = 0x45;
+
+      function writeField(offset, str, maxLen) {
+        const bytes = enc.encode(str);
+        const len = Math.min(bytes.length, maxLen - 1);
+        buf.set(bytes.subarray(0, len), offset);
+        /* rest stays 0x00 (null terminator + padding) */
+      }
+
+      writeField(0x004, ssid,       64);
+      writeField(0x044, password,   64);
+      writeField(0x084, deviceName, 33);
+      writeField(0x0A5, relayUrl,   128);
+
+      return buf;
+    }
+
+    window.startProvision = async function() {
+      const ssid   = document.getElementById("wifi-ssid").value.trim();
+      const pass   = document.getElementById("wifi-pass").value;
+      const name   = document.getElementById("device-name").value.trim().toLowerCase();
+      const errEl  = document.getElementById("name-error");
       errEl.style.display = "none";
 
       if (!ssid || !name) {
@@ -196,38 +239,39 @@
       showStep("step-3");
       const status = document.getElementById("provision-status");
 
-      // Generate a random 32-byte hex secret in the browser
-      const secretBytes = crypto.getRandomValues(new Uint8Array(32));
-      const secret = Array.from(secretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
-
-      // TODO: This step uses esp-web-tools' Improv WiFi to send WiFi creds,
-      //       then programs an NVS partition image with {name, secret, relay_url}.
-      //       Full implementation requires the NVS partition tooling to be wired up.
-      //       For now, display instructions for manual steps.
-
-      status.textContent = "registering device with relay…";
-
       try {
-        const res = await fetch(`${RELAY_URL}/register`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            // Note: ADMIN_TOKEN will be provided by the flash page host, not participants
-            // For the workshop, this page will be served with the token embedded or proxied
-            "Authorization": "Bearer WORKSHOP_TOKEN_PLACEHOLDER",
+        status.textContent = "select your device port to write config…";
+        const port = await navigator.serial.requestPort();
+
+        status.textContent = "connecting to device…";
+        const transport = new Transport(port, true);
+        const loader = new ESPLoader({
+          transport,
+          baudrate: 460800,
+          romBaudrate: 115200,
+          enableTracing: false,
+        });
+        await loader.main();
+
+        status.textContent = "writing config partition…";
+        const configBin = buildConfigBinary(ssid, pass, name, RELAY_URL);
+        /* esptool-js wants a binary string (charCodeAt per byte) */
+        const binStr = Array.from(configBin, b => String.fromCharCode(b)).join("");
+        await loader.writeFlash({
+          fileArray: [{ data: binStr, address: CONFIG_PARTITION_ADDR }],
+          flashSize: "keep",
+          flashMode: "keep",
+          flashFreq: "keep",
+          eraseAll: false,
+          compress: true,
+          reportProgress: (idx, written, total) => {
+            status.textContent = `writing config… ${Math.round(written / total * 100)}%`;
           },
-          body: JSON.stringify({ name, secret }),
         });
 
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text);
-        }
-
-        status.textContent = "almost there — device is connecting…";
-
-        // Give device time to connect to relay
-        await sleep(3000);
+        status.textContent = "rebooting device…";
+        await loader.hardReset();
+        await transport.disconnect();
 
         const link = `http://${name}.cute.tech`;
         document.getElementById("device-link").textContent = `${name}.cute.tech`;
@@ -238,8 +282,6 @@
         status.textContent = `error: ${err.message}`;
       }
     }
-
-    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
   </script>
 
 </body>
