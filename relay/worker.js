@@ -6,13 +6,24 @@
 //   GET  /_ws?device=<name>&key=<secret>   Device WebSocket upgrade
 //   POST /register  {name, secret}          Register a device (admin token required)
 //   GET  /status                            List online device names
+//   GET  /known?domain=<fqdn>               Caddy on-demand TLS permission check
 //   GET  <anything else>                    Proxy to device named by Host subdomain
+
+// Device registry: name → secret. Module-level because workerd bindings are
+// read-only config, not mutable state. Lives as long as the workerd process;
+// restart wipes it and devices must re-register.
+const devices = new Map();
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // Registration endpoint
+    // Registration endpoint. The flash page calls this from another origin
+    // (cute.tech or localhost), so it needs CORS headers — and the
+    // Authorization header makes browsers send a preflight OPTIONS first.
+    if (url.pathname === "/register" && request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
     if (url.pathname === "/register" && request.method === "POST") {
       return handleRegister(request, env);
     }
@@ -22,12 +33,23 @@ export default {
       return handleStatus(request, env);
     }
 
+    // Caddy on-demand TLS check: only allow certificates for the relay's own
+    // hostname and registered devices, so subdomain scanners can't burn
+    // through the Let's Encrypt rate limit (50 certs/domain/week).
+    if (url.pathname === "/known" && request.method === "GET") {
+      const domain = url.searchParams.get("domain") ?? "";
+      const name = domain.split(".")[0];
+      const ok = domain.endsWith(".cute.tech") &&
+        (name === "relay" || devices.has(name));
+      return new Response(ok ? "ok" : "unknown", { status: ok ? 200 : 404 });
+    }
+
     // Device WebSocket upgrade
     if (url.pathname === "/_ws") {
       const deviceName = url.searchParams.get("device") ?? "";
       const key = url.searchParams.get("key") ?? "";
 
-      const secret = env.devices.get(deviceName);
+      const secret = devices.get(deviceName);
       if (!secret) {
         return new Response("Unknown device", { status: 404 });
       }
@@ -43,7 +65,7 @@ export default {
     const host = request.headers.get("host") ?? "";
     const deviceName = host.split(".")[0];
 
-    if (!env.devices.has(deviceName)) {
+    if (!devices.has(deviceName)) {
       return new Response("No device registered with this name", { status: 404 });
     }
 
@@ -52,30 +74,37 @@ export default {
   },
 };
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+};
+
 async function handleRegister(request, env) {
   const token = (request.headers.get("Authorization") ?? "").replace("Bearer ", "");
   if (!env.ADMIN_TOKEN || !timingSafeEqual(token, env.ADMIN_TOKEN)) {
-    return new Response("Unauthorized", { status: 403 });
+    return new Response("Unauthorized", { status: 403, headers: CORS_HEADERS });
   }
 
   let body;
   try {
     body = await request.json();
   } catch {
-    return new Response("Invalid JSON", { status: 400 });
+    return new Response("Invalid JSON", { status: 400, headers: CORS_HEADERS });
   }
 
   const { name, secret } = body;
   if (!name || !secret || typeof name !== "string" || typeof secret !== "string") {
-    return new Response("name and secret required", { status: 400 });
+    return new Response("name and secret required", { status: 400, headers: CORS_HEADERS });
   }
   if (!/^[a-z0-9-]{1,32}$/.test(name)) {
-    return new Response("name must be lowercase alphanumeric/hyphens, max 32 chars", { status: 400 });
+    return new Response("name must be lowercase alphanumeric/hyphens, max 32 chars",
+      { status: 400, headers: CORS_HEADERS });
   }
 
-  env.devices.set(name, secret);
+  devices.set(name, secret);
   return new Response(JSON.stringify({ ok: true, name }), {
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });
 }
 
@@ -83,7 +112,7 @@ async function handleStatus(request, env) {
   // Ask each registered device's DO whether it has a live connection.
   // For simplicity: list all registered names and mark which DOs respond online.
   // The DO exposes a /_status internal path we check.
-  const names = [...env.devices.keys()];
+  const names = [...devices.keys()];
   const online = [];
 
   await Promise.all(names.map(async (name) => {

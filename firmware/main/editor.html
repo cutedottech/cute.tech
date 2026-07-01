@@ -296,6 +296,37 @@
       });
     }
 
+    // Changes need the edit password (set when the device was flashed).
+    // It travels as a ?key= query param — the relay only forwards the URL
+    // and body, so a header wouldn't make it to the device. Remembered per
+    // browser; a wrong one re-prompts and retries once.
+    var KEY_STORE = "cute-edit-key";
+    function getEditKey(forceAsk) {
+      var key = forceAsk ? null : localStorage.getItem(KEY_STORE);
+      if (key == null) {
+        key = prompt("edit password for this device:");
+        if (key == null) return null;   // user cancelled
+        localStorage.setItem(KEY_STORE, key);
+      }
+      return key;
+    }
+    function mutate(method, url, body, isRetry) {
+      var key = getEditKey(isRetry);
+      if (key == null) return Promise.reject(new Error("edit password required"));
+      var sep = url.indexOf("?") === -1 ? "?" : "&";
+      return fetch(url + sep + "key=" + encodeURIComponent(key), {
+        method: method, body: body,
+      }).then(function (r) {
+        if (r.status === 401) {
+          localStorage.removeItem(KEY_STORE);
+          if (!isRetry) return mutate(method, url, body, true);
+          throw new Error("wrong edit password");
+        }
+        if (!r.ok) return r.text().then(function (t) { throw new Error(t || r.status); });
+        return r;
+      });
+    }
+
     function loadTree(selectAfter) {
       return api("GET", "/api/files").then(function (r) { return r.json(); })
         .then(function (list) {
@@ -331,7 +362,7 @@
     function saveFile() {
       if (!currentPath || els.save.disabled) return;
       setStatus("saving…", "busy");
-      api("PUT", "/api/file?path=" + encodeURIComponent(currentPath), cm.getValue())
+      mutate("PUT", "/api/file?path=" + encodeURIComponent(currentPath), cm.getValue())
         .then(function () {
           dirty = false;
           els.save.disabled = true;
@@ -346,7 +377,7 @@
       if (!p) return;
       p = p.trim();
       if (!validPath(p)) { toast("invalid path", true); return; }
-      api("PUT", "/api/file?path=" + encodeURIComponent(p), "")
+      mutate("PUT", "/api/file?path=" + encodeURIComponent(p), "")
         .then(function () { return loadTree(p); })
         .then(function () { toast("created " + basename(p)); })
         .catch(function (e) { toast("create failed: " + e.message, true); });
@@ -358,7 +389,7 @@
       p = p.trim();
       if (!validPath(p)) { toast("invalid path", true); return; }
       expanded[p] = true;
-      api("POST", "/api/mkdir?path=" + encodeURIComponent(p))
+      mutate("POST", "/api/mkdir?path=" + encodeURIComponent(p))
         .then(function () { return loadTree(); })
         .then(function () { toast("created " + basename(p) + "/"); })
         .catch(function (e) { toast("mkdir failed: " + e.message, true); });
@@ -366,7 +397,7 @@
 
     function deleteEntry(path, isDir) {
       if (!confirm("Delete " + path + (isDir ? " and everything in it?" : "?"))) return;
-      api("DELETE", "/api/file?path=" + encodeURIComponent(path))
+      mutate("DELETE", "/api/file?path=" + encodeURIComponent(path))
         .then(function () {
           if (currentPath && (currentPath === path || currentPath.indexOf(path + "/") === 0)) {
             currentPath = null; dirty = false;

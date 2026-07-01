@@ -1,3 +1,6 @@
 dependencies:
   idf: ">=5.3"
   joltwallet/littlefs: ">=1.14"
+  espressif/esp_websocket_client: "^1.2"
+  # cJSON stopped being bundled with ESP-IDF in v6 — it's a managed component now
+  espressif/cjson: "*"

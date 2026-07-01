@@ -131,6 +131,17 @@
       <div class="hint">
         lowercase letters, numbers, hyphens only. max 32 chars.
       </div>
+      <input type="text" id="edit-pass" placeholder="edit password" autocomplete="off" spellcheck="false" maxlength="32">
+      <div class="hint">
+        your password for editing your page — anyone who visits<br>
+        can look, only you can change. don't lose it: changing it<br>
+        means re-flashing.
+      </div>
+      <input type="text" id="workshop-code" placeholder="workshop code" autocomplete="off" spellcheck="false">
+      <div class="hint">
+        the code from your workshop host — it lets this page<br>
+        claim your name on the relay.
+      </div>
       <div class="error" id="name-error"></div>
       <button class="next" id="provision-btn">write config to device →</button>
     </div>
@@ -171,7 +182,7 @@
     });
 
     /* Persist form fields across page refreshes */
-    const FIELDS = ["wifi-ssid", "wifi-pass", "device-name"];
+    const FIELDS = ["wifi-ssid", "wifi-pass", "device-name", "edit-pass", "workshop-code"];
     document.addEventListener("DOMContentLoaded", () => {
       FIELDS.forEach(id => {
         const el = document.getElementById(id);
@@ -179,6 +190,15 @@
         if (saved) el.value = saved;
         el.addEventListener("input", () => localStorage.setItem("cute-" + id, el.value));
       });
+
+      /* Workshop link can carry the code: cute.tech/flash#code=xyz
+         (fragment, not query — it never leaves the browser) */
+      const m = location.hash.match(/code=([^&]+)/);
+      if (m) {
+        const el = document.getElementById("workshop-code");
+        el.value = decodeURIComponent(m[1]);
+        localStorage.setItem("cute-workshop-code", el.value);
+      }
     });
   </script>
 
@@ -186,17 +206,25 @@
     import { ESPLoader, Transport } from "/web/esptool.js";
 
     /* Config partition layout (matches firmware device_config_t):
-       0x000  magic[4]       = "CUTE" (0x45545543 LE)
-       0x004  ssid[64]       null-terminated
-       0x044  password[64]   null-terminated
+       0x000  magic[4]        = "CUTE" (0x45545543 LE)
+       0x004  ssid[64]        null-terminated
+       0x044  password[64]    null-terminated
        0x084  device_name[33] null-terminated
-       0x0A5  relay_url[128] null-terminated
-       Total: 0x125 bytes, padded to 4096 */
+       0x0A5  relay_url[128]  null-terminated
+       0x125  device_secret[65] null-terminated
+       0x16A  edit_password[33] null-terminated
+       Total: 0x18B bytes, padded to 4096 */
     const CONFIG_PARTITION_ADDR = 0x310000;
     const CONFIG_PARTITION_SIZE = 4096;
     const RELAY_URL = "https://relay.cute.tech";
 
-    function buildConfigBinary(ssid, password, deviceName, relayUrl) {
+    /* 32 random bytes as 64 hex chars — the device's password for the relay */
+    function generateSecret() {
+      const bytes = crypto.getRandomValues(new Uint8Array(32));
+      return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    function buildConfigBinary(ssid, password, deviceName, relayUrl, secret, editPass) {
       const buf = new Uint8Array(CONFIG_PARTITION_SIZE);
       const enc = new TextEncoder();
 
@@ -214,6 +242,8 @@
       writeField(0x044, password,   64);
       writeField(0x084, deviceName, 33);
       writeField(0x0A5, relayUrl,   128);
+      writeField(0x125, secret,     65);
+      writeField(0x16A, editPass,   33);
 
       return buf;
     }
@@ -222,11 +252,13 @@
       const ssid   = document.getElementById("wifi-ssid").value.trim();
       const pass   = document.getElementById("wifi-pass").value;
       const name   = document.getElementById("device-name").value.trim().toLowerCase();
+      const editPw = document.getElementById("edit-pass").value.trim();
+      const code   = document.getElementById("workshop-code").value.trim();
       const errEl  = document.getElementById("name-error");
       errEl.style.display = "none";
 
-      if (!ssid || !name) {
-        errEl.textContent = "WiFi name and device name are both required.";
+      if (!ssid || !name || !editPw || !code) {
+        errEl.textContent = "WiFi name, device name, edit password and workshop code are all required.";
         errEl.style.display = "block";
         return;
       }
@@ -240,6 +272,21 @@
       const status = document.getElementById("provision-status");
 
       try {
+        /* Claim the name on the relay first — no point flashing config
+           the relay won't accept. */
+        status.textContent = "claiming your name on the relay…";
+        const secret = generateSecret();
+        const reg = await fetch(`${RELAY_URL}/register`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${code}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name, secret }),
+        });
+        if (reg.status === 403) throw new Error("wrong workshop code");
+        if (!reg.ok) throw new Error(`relay said ${reg.status}: ${await reg.text()}`);
+
         status.textContent = "select your device port to write config…";
         const port = await navigator.serial.requestPort();
 
@@ -254,7 +301,7 @@
         await loader.main();
 
         status.textContent = "writing config partition…";
-        const configBin = buildConfigBinary(ssid, pass, name, RELAY_URL);
+        const configBin = buildConfigBinary(ssid, pass, name, RELAY_URL, secret, editPw);
         /* esptool-js wants a binary string (charCodeAt per byte) */
         const binStr = Array.from(configBin, b => String.fromCharCode(b)).join("");
         await loader.writeFlash({
@@ -273,7 +320,7 @@
         await loader.hardReset();
         await transport.disconnect();
 
-        const link = `http://${name}.cute.tech`;
+        const link = `https://${name}.cute.tech`;
         document.getElementById("device-link").textContent = `${name}.cute.tech`;
         document.getElementById("device-link").href = link;
         showStep("step-done");

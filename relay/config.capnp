@@ -1,20 +1,19 @@
 using Workerd = import "/workerd/workerd.capnp";
 
 # cute.tech relay — workerd config
-# Run locally: npx workerd serve config.capnp
-# For production: put nginx in front for TLS, run workerd as a systemd service.
+# Run locally: npm run dev  (sets a dev ADMIN_TOKEN)
+# Production: Caddy terminates TLS and proxies here; see deploy/setup.sh.
 #
-# ADMIN_TOKEN binding below is a placeholder — replace with a real secret
-# or set via environment variable / secret manager before deploying.
+# ADMIN_TOKEN is read from the environment — workerd must be started with
+# ADMIN_TOKEN set (deploy/cute-relay.service loads it from /etc/cute-relay.env).
 
 const config :Workerd.Config = (
   services = [
     (name = "main", worker = .mainWorker),
   ],
   sockets = [
-    # Local/dev: plain HTTP on :8080
-    # For production behind nginx TLS termination, this stays as HTTP
-    (name = "http", address = "*:8080", http = (), service = "main"),
+    # Plain HTTP, loopback only — Caddy (or local curl) is the only client.
+    (name = "http", address = "127.0.0.1:8080", http = (), service = "main"),
   ],
 );
 
@@ -29,8 +28,6 @@ const mainWorker :Workerd.Worker = (
   durableObjectStorage = (inMemory = void),
   bindings = [
     (name = "RELAY", durableObjectNamespace = "RelayObject"),
-    # ADMIN_TOKEN: set this to a strong random secret before deploying
-    # Generate one: openssl rand -hex 32
-    (name = "ADMIN_TOKEN", text = "REPLACE_ME"),
+    (name = "ADMIN_TOKEN", fromEnvironment = "ADMIN_TOKEN"),
   ],
 );

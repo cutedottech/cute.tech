@@ -9,14 +9,13 @@ GitHub Pages site for cute.tech. Served from the `main` branch `/web` folder at 
 
 ## Flash tool flow (`flash.html`)
 
-1. User plugs in ESP32-S3 via USB, clicks "Install"
+1. User plugs in ESP32-S3 via USB, clicks "flash firmware"
 2. [esp-web-tools](https://esphome.github.io/esp-web-tools/) flashes firmware from `firmware/manifest.json`
-3. Improv WiFi dialog: user enters DWEB WiFi SSID + password, sent over serial
-4. User types their chosen device name (e.g. "toaster")
-5. Browser generates a random secret
-6. Browser POSTs `{name, secret}` to relay `/register` endpoint
-7. Browser programs NVS config partition (name + secret + relay URL) via WebSerial
-8. Device reboots → connects relay → device is live at `name.cute.tech`
+3. User enters WiFi SSID + password, device name, an edit password (protects the device's editing endpoints; checked by firmware as `?key=` query param — headers don't survive the relay), and the workshop code (= relay `ADMIN_TOKEN`; prefillable via `flash.html#code=...` link fragment)
+4. Browser generates a random 64-hex-char secret
+5. Browser POSTs `{name, secret}` to relay `/register` (Bearer workshop code)
+6. Browser writes the raw `config` partition at 0x310000 via esptool.js — packed `device_config_t` struct (magic + ssid + password + name + relay URL + secret; layout comment in flash.html must match firmware/main/main.c)
+7. Device reboots → WiFi → opens WSS to relay → live at `name.cute.tech`
 
 ## Firmware manifest
 

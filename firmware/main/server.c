@@ -11,6 +11,9 @@
 
 static const char *TAG = "server";
 
+/* Edit password from the config partition; "" means editing is open. */
+static char s_edit_pw[33];
+
 /* Default page + editor app are embedded in flash (see CMakeLists EMBED_FILES) */
 extern const char index_html_start[]  asm("_binary_index_html_start");
 extern const char index_html_end[]    asm("_binary_index_html_end");
@@ -131,6 +134,31 @@ static void remove_recursive(const char *fs_path, int depth)
     } else {
         unlink(fs_path);
     }
+}
+
+/* Compare in constant time so response timing doesn't leak how many leading
+   characters of a guess were right. */
+static bool secret_equal(const char *a, const char *b)
+{
+    size_t la = strlen(a), lb = strlen(b);
+    unsigned diff = (la != lb);
+    for (size_t i = 0; i < la && i < sizeof(s_edit_pw); i++)
+        diff |= (unsigned char)a[i] ^ (unsigned char)b[i % (lb ? lb : 1)];
+    return diff == 0;
+}
+
+/* Requests that change files must carry ?key=<edit password>. The key rides
+   in the query string because the relay forwards method+path+body only —
+   headers don't survive the trip. */
+static bool edit_allowed(httpd_req_t *req)
+{
+    if (!s_edit_pw[0]) return true;
+
+    char query[WEB_PATH_MAX * 2], enc[64], key[64];
+    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) return false;
+    if (httpd_query_key_value(query, "key", enc, sizeof(enc)) != ESP_OK) return false;
+    url_decode(key, enc, sizeof(key));
+    return secret_equal(key, s_edit_pw);
 }
 
 /* Read the ?path= query parameter (URL-decoded) into out. */
@@ -261,6 +289,10 @@ static esp_err_t api_file_get_handler(httpd_req_t *req)
 
 static esp_err_t api_file_put_handler(httpd_req_t *req)
 {
+    if (!edit_allowed(req)) {
+        httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "wrong or missing edit password");
+        return ESP_FAIL;
+    }
     char web[WEB_PATH_MAX], fs_path[FS_PATH_MAX];
     if (!get_path_param(req, web, sizeof(web)) || !to_fs_path(web, fs_path, sizeof(fs_path))) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad path");
@@ -319,6 +351,10 @@ static esp_err_t api_file_put_handler(httpd_req_t *req)
 
 static esp_err_t api_file_delete_handler(httpd_req_t *req)
 {
+    if (!edit_allowed(req)) {
+        httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "wrong or missing edit password");
+        return ESP_FAIL;
+    }
     char web[WEB_PATH_MAX], fs_path[FS_PATH_MAX];
     if (!get_path_param(req, web, sizeof(web)) || strcmp(web, "/") == 0 ||
         !to_fs_path(web, fs_path, sizeof(fs_path))) {
@@ -332,6 +368,10 @@ static esp_err_t api_file_delete_handler(httpd_req_t *req)
 
 static esp_err_t api_mkdir_handler(httpd_req_t *req)
 {
+    if (!edit_allowed(req)) {
+        httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "wrong or missing edit password");
+        return ESP_FAIL;
+    }
     char web[WEB_PATH_MAX], fs_path[FS_PATH_MAX];
     if (!get_path_param(req, web, sizeof(web)) || !to_fs_path(web, fs_path, sizeof(fs_path))) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Bad path");
@@ -380,8 +420,12 @@ static void register_uri(httpd_handle_t server, const char *uri,
     httpd_register_uri_handler(server, &u);
 }
 
-void start_webserver(void)
+void start_webserver(const char *edit_password)
 {
+    if (edit_password) strlcpy(s_edit_pw, edit_password, sizeof(s_edit_pw));
+    if (!s_edit_pw[0])
+        ESP_LOGW(TAG, "no edit password set — anyone can edit this site");
+
     httpd_config_t config   = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn     = httpd_uri_match_wildcard;
     config.max_uri_handlers = 16;

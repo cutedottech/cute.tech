@@ -1,0 +1,19 @@
+[Unit]
+Description=cute.tech relay (workerd)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=cute-relay
+EnvironmentFile=/etc/cute-relay.env
+ExecStart=/usr/local/bin/workerd serve /opt/cute-relay/config.capnp
+Restart=always
+RestartSec=2
+# Hardening — the relay needs no filesystem access beyond its own config
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

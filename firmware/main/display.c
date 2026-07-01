@@ -260,6 +260,25 @@ void display_show_connected(const char *ip)
     oled_flush();
 }
 
+void display_show_online(const char *name)
+{
+    char line[22];
+    fb_clear();
+    fb_draw_str(0, 0, "cute.tech");
+    fb_draw_str(0, 2, "you are live!");
+    /* 21 chars fit per line: short names get "name.cute.tech" on one line,
+       long ones get the name and ".cute.tech" stacked. */
+    if (strlen(name) <= 11) {
+        snprintf(line, sizeof(line), "%s.cute.tech", name);
+        fb_draw_str(0, 4, line);
+    } else {
+        snprintf(line, sizeof(line), "%.21s", name);
+        fb_draw_str(0, 4, line);
+        fb_draw_str(0, 5, "      .cute.tech");
+    }
+    oled_flush();
+}
+
 void display_show_disconnected(int reason)
 {
     char line[22];

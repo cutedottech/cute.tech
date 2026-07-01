@@ -1,0 +1,30 @@
+# cute.tech relay — Caddy config
+#
+# Caddy terminates TLS for *.cute.tech and proxies everything to workerd
+# on localhost:8080. Certificates are issued on demand, per subdomain, the
+# first time each name is visited — no wildcard cert, no DNS API access.
+#
+# Before issuing a cert, Caddy asks the relay's /known endpoint whether the
+# subdomain belongs to a registered device. This stops random subdomain
+# scanners from burning the Let's Encrypt rate limit.
+
+{
+	on_demand_tls {
+		ask http://localhost:8080/known
+	}
+}
+
+# Catch-all HTTPS: any hostname that passes the /known check gets a cert
+# and is proxied to the relay.
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy localhost:8080
+}
+
+# Plain HTTP: redirect to HTTPS. (Caddy handles ACME HTTP challenges
+# internally before this block applies.)
+http:// {
+	redir https://{host}{uri} permanent
+}

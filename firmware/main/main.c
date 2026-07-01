@@ -9,8 +9,10 @@
 #include "esp_partition.h"
 #include "nvs_flash.h"
 #include "esp_netif.h"
+#include "esp_netif_sntp.h"
 #include "display.h"
 #include "server.h"
+#include "relay_client.h"
 
 static const char *TAG = "main";
 
@@ -24,6 +26,8 @@ typedef struct {
     char     password[64];
     char     device_name[33];
     char     relay_url[128];
+    char     device_secret[65];
+    char     edit_password[33];
 } __attribute__((packed)) device_config_t;
 
 static device_config_t s_cfg;
@@ -45,13 +49,15 @@ static bool load_config(void)
     s_cfg.password[sizeof(s_cfg.password) - 1]     = '\0';
     s_cfg.device_name[sizeof(s_cfg.device_name)-1] = '\0';
     s_cfg.relay_url[sizeof(s_cfg.relay_url) - 1]   = '\0';
+    s_cfg.device_secret[sizeof(s_cfg.device_secret) - 1] = '\0';
+    s_cfg.edit_password[sizeof(s_cfg.edit_password) - 1] = '\0';
     ESP_LOGI(TAG, "config loaded: ssid=\"%s\" name=\"%s\"", s_cfg.ssid, s_cfg.device_name);
     return true;
 }
 
 /* ── Display task ────────────────────────────────────────────────────────── */
 
-typedef enum { DISP_CONNECTING, DISP_CONNECTED, DISP_DISCONNECTED } disp_cmd_t;
+typedef enum { DISP_CONNECTING, DISP_CONNECTED, DISP_DISCONNECTED, DISP_ONLINE } disp_cmd_t;
 
 typedef struct {
     disp_cmd_t cmd;
@@ -77,6 +83,7 @@ static void display_task(void *arg)
                 case DISP_CONNECTING:   display_show_connecting(m.arg);     break;
                 case DISP_CONNECTED:    display_show_connected(m.arg);      break;
                 case DISP_DISCONNECTED: display_show_disconnected(m.reason); break;
+                case DISP_ONLINE:       display_show_online(m.arg);         break;
             }
         }
     }
@@ -158,6 +165,30 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
     }
 }
 
+/* Runs on the WebSocket task — just posts to the display queue. */
+static void relay_status_cb(bool connected)
+{
+    if (connected) disp_post(DISP_ONLINE, s_cfg.device_name, 0);
+    /* On drop: leave the last screen up; the client reconnects on its own
+       and WiFi loss already triggers DISP_DISCONNECTED. */
+}
+
+/* TLS certificate checks need a roughly-correct clock, and we boot in 1970.
+   Wait for SNTP before opening the WSS connection; on timeout start anyway
+   (the client retries, so a late sync still recovers). Runs in its own task
+   because the wait must not block the event loop. */
+static void relay_start_task(void *arg)
+{
+    esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    esp_netif_sntp_init(&sntp_cfg);
+    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000)) != ESP_OK)
+        ESP_LOGW(TAG, "SNTP sync timed out — TLS may fail until time is set");
+
+    start_relay_client(s_cfg.relay_url, s_cfg.device_name,
+                       s_cfg.device_secret, relay_status_cb);
+    vTaskDelete(NULL);
+}
+
 static void ip_event_handler(void *arg, esp_event_base_t base,
                               int32_t event_id, void *event_data)
 {
@@ -167,7 +198,18 @@ static void ip_event_handler(void *arg, esp_event_base_t base,
         snprintf(ip, sizeof(ip), IPSTR, IP2STR(&event->ip_info.ip));
         ESP_LOGI(TAG, "got IP: %s", ip);
         disp_post(DISP_CONNECTED, ip, 0);
-        start_webserver();
+
+        /* Server and relay client persist across WiFi drops — start once. */
+        static bool s_services_started = false;
+        if (s_services_started) return;
+        s_services_started = true;
+
+        start_webserver(s_cfg.edit_password);
+        if (s_cfg.relay_url[0] && s_cfg.device_secret[0]) {
+            xTaskCreate(relay_start_task, "relay_start", 4096, NULL, 5, NULL);
+        } else {
+            ESP_LOGW(TAG, "no relay configured — local-only mode");
+        }
     }
 }
 

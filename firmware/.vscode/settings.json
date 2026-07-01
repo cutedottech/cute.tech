@@ -4,7 +4,7 @@
   "idf.openOcdConfigs": [
     "board/esp32s3-builtin.cfg"
   ],
-  "idf.port": "/dev/tty.usbmodem1101",
+  "idf.port": "/dev/tty.usbmodem3101",
   "idf.currentSetup": "/Users/oliver/.espressif/v6.0.1/esp-idf",
   "idf.customExtraVars": {
     "IDF_TARGET": "esp32s3"

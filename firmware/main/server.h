@@ -5,5 +5,7 @@
 void storage_init(void);
 
 /* Start the HTTP server: serves files from the filesystem, the /edit editor,
-   and the file-management endpoints under /api. Call once an IP is acquired. */
-void start_webserver(void);
+   and the file-management endpoints under /api. Call once an IP is acquired.
+   edit_password guards the endpoints that change files (?key= query param);
+   pass "" to leave editing open. */
+void start_webserver(const char *edit_password);
