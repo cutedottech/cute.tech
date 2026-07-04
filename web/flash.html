@@ -203,7 +203,10 @@
   </script>
 
   <script type="module">
-    import { ESPLoader, Transport } from "/web/esptool.js";
+    /* Relative import: flash.html and esptool.js sit in the same folder,
+       whether that folder is served as the site root (GitHub Pages) or as
+       /web/ (local repo-root server). */
+    import { ESPLoader, Transport } from "./esptool.js";
 
     /* Config partition layout (matches firmware device_config_t):
        0x000  magic[4]        = "CUTE" (0x45545543 LE)
