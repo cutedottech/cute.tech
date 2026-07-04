@@ -2,6 +2,7 @@
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
@@ -17,11 +18,21 @@
 #define OLED_W     128
 #define OLED_PAGES 8
 
+/* Headless fallback: if no OLED answers at OLED_ADDR, status goes to a
+   blinking LED instead. GPIO 21 is OLED_RST on the Heltec and the active-low
+   user LED on the Seeed XIAO ESP32S3, so the same pin serves both boards. */
+#define LED_PIN       OLED_RST
+#define LED_ON_LEVEL  0
+
 static const char *TAG = "display";
 
 static i2c_master_bus_handle_t i2c_bus;
 static i2c_master_dev_handle_t oled_dev;
 static uint8_t fb[OLED_W * OLED_PAGES];
+
+static bool s_have_oled;
+static esp_timer_handle_t s_led_timer;
+static bool s_led_lit;
 
 /* 5×7 ASCII font (0x20–0x7E) */
 static const uint8_t FONT[][5] = {
@@ -154,6 +165,26 @@ static void oled_cmd(uint8_t cmd)
     oled_send(buf, 2);
 }
 
+static void led_timer_cb(void *arg)
+{
+    s_led_lit = !s_led_lit;
+    gpio_set_level(LED_PIN, s_led_lit ? LED_ON_LEVEL : !LED_ON_LEVEL);
+}
+
+/* Blink half-period in ms; 0 = solid on. Patterns, slow to fast:
+   1000 starting up · 500 connecting/reconnecting · 250 WiFi up, relay pending
+   · 150 no config · solid = live on cute.tech */
+static void led_pattern(int half_period_ms)
+{
+    esp_timer_stop(s_led_timer);
+    if (half_period_ms == 0) {
+        s_led_lit = true;
+        gpio_set_level(LED_PIN, LED_ON_LEVEL);
+    } else {
+        esp_timer_start_periodic(s_led_timer, (uint64_t)half_period_ms * 1000);
+    }
+}
+
 static void oled_flush(void)
 {
     static const uint8_t addr[] = {
@@ -195,6 +226,18 @@ void display_init(void)
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &i2c_bus));
 
+    if (i2c_master_probe(i2c_bus, OLED_ADDR, 100) != ESP_OK) {
+        ESP_LOGI(TAG, "no OLED at 0x%02X — headless board, status on LED (GPIO %d)",
+                 OLED_ADDR, LED_PIN);
+        i2c_del_master_bus(i2c_bus);
+        i2c_bus = NULL;
+        esp_timer_create_args_t timer_args = { .callback = led_timer_cb, .name = "led" };
+        ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_led_timer));
+        led_pattern(1000);
+        return;
+    }
+    s_have_oled = true;
+
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address  = OLED_ADDR,
@@ -229,6 +272,7 @@ void display_init(void)
 
 void display_show_no_config(void)
 {
+    if (!s_have_oled) { led_pattern(150); return; }
     fb_clear();
     fb_draw_str(0, 0, "cute.tech");
     fb_draw_str(0, 2, "no config found!");
@@ -239,6 +283,7 @@ void display_show_no_config(void)
 
 void display_show_connecting(const char *ssid)
 {
+    if (!s_have_oled) { led_pattern(500); return; }
     char line[22];
     fb_clear();
     fb_draw_str(0, 0, "cute.tech");
@@ -250,6 +295,7 @@ void display_show_connecting(const char *ssid)
 
 void display_show_connected(const char *ip)
 {
+    if (!s_have_oled) { led_pattern(250); return; }
     char line[22];
     fb_clear();
     fb_draw_str(0, 0, "cute.tech");
@@ -262,6 +308,7 @@ void display_show_connected(const char *ip)
 
 void display_show_online(const char *name)
 {
+    if (!s_have_oled) { led_pattern(0); return; }
     char line[22];
     fb_clear();
     fb_draw_str(0, 0, "cute.tech");
@@ -281,6 +328,7 @@ void display_show_online(const char *name)
 
 void display_show_disconnected(int reason)
 {
+    if (!s_have_oled) { led_pattern(500); return; }
     char line[22];
     fb_clear();
     fb_draw_str(0, 0, "cute.tech");
