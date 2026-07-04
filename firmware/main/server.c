@@ -8,6 +8,7 @@
 #include "esp_log.h"
 #include "esp_http_server.h"
 #include "esp_littlefs.h"
+#include "esp_rom_crc.h"
 
 static const char *TAG = "server";
 
@@ -385,6 +386,57 @@ static esp_err_t api_mkdir_handler(httpd_req_t *req)
 
 /* ── public API ──────────────────────────────────────────────────────────── */
 
+/* ── default page seeding ────────────────────────────────────────────────
+   The editable index.html starts as a copy of the embedded default, and a
+   firmware update refreshes that copy — but only while the user has never
+   edited it. We remember the CRC of the default we last seeded in
+   /.seed_crc: if the stored page still matches that CRC it is pristine and
+   safe to replace; any edit changes the CRC and the page is never touched
+   again. */
+
+#define SEED_CRC_PATH  MOUNT_POINT "/.seed_crc"
+
+static bool file_crc32(const char *path, uint32_t *out)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return false;
+    uint8_t buf[512];
+    size_t n;
+    uint32_t crc = 0;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0)
+        crc = esp_rom_crc32_le(crc, buf, n);
+    fclose(f);
+    *out = crc;
+    return true;
+}
+
+static bool read_seed_crc(uint32_t *out)
+{
+    FILE *f = fopen(SEED_CRC_PATH, "r");
+    if (!f) return false;
+    bool ok = fread(out, sizeof(*out), 1, f) == 1;
+    fclose(f);
+    return ok;
+}
+
+static void write_seed_crc(uint32_t crc)
+{
+    FILE *f = fopen(SEED_CRC_PATH, "w");
+    if (!f) return;
+    fwrite(&crc, sizeof(crc), 1, f);
+    fclose(f);
+}
+
+static void seed_default_index(uint32_t emb_crc)
+{
+    FILE *f = fopen(MOUNT_POINT "/index.html", "w");
+    if (!f) return;
+    fwrite(index_html_start, 1, index_html_end - index_html_start, f);
+    fclose(f);
+    write_seed_crc(emb_crc);
+    ESP_LOGI(TAG, "seeded default index.html");
+}
+
 void storage_init(void)
 {
     esp_vfs_littlefs_conf_t conf = {
@@ -402,14 +454,26 @@ void storage_init(void)
     esp_littlefs_info(conf.partition_label, &total, &used);
     ESP_LOGI(TAG, "LittleFS mounted: %u/%u bytes used", (unsigned)used, (unsigned)total);
 
-    /* Seed the editable index.html from the embedded default on first boot. */
-    if (!path_exists(MOUNT_POINT "/index.html")) {
-        FILE *f = fopen(MOUNT_POINT "/index.html", "w");
-        if (f) {
-            fwrite(index_html_start, 1, index_html_end - index_html_start, f);
-            fclose(f);
-            ESP_LOGI(TAG, "seeded default index.html");
-        }
+    uint32_t emb_crc = esp_rom_crc32_le(
+        0, (const uint8_t *)index_html_start, index_html_end - index_html_start);
+
+    uint32_t cur_crc;
+    if (!file_crc32(MOUNT_POINT "/index.html", &cur_crc)) {
+        seed_default_index(emb_crc);          /* first boot: nothing there */
+        return;
+    }
+
+    uint32_t seeded_crc;
+    if (!read_seed_crc(&seeded_crc)) {
+        /* Device seeded by firmware that predates the marker: adopt the
+           current page as the un-edited default. */
+        seeded_crc = cur_crc;
+        write_seed_crc(seeded_crc);
+    }
+
+    if (cur_crc == seeded_crc && cur_crc != emb_crc) {
+        ESP_LOGI(TAG, "default page unedited — refreshing from new firmware");
+        seed_default_index(emb_crc);
     }
 }
 
