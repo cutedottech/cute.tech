@@ -28,4 +28,4 @@ Match the existing landing page: `#fef9f0` background, dotted grid, Press Start 
 
 ## Deployment
 
-GitHub Pages: Settings → Pages → Deploy from branch `main`, folder `/web`. No build step — plain HTML/CSS/JS.
+GitHub Pages via `.github/workflows/pages.yml`, which publishes the `web/` folder on every push to `main` that touches it. (Branch-based Pages only supports `/` or `/docs`, so the folder must be deployed through Actions.) Repo setting: Settings → Pages → Source = "GitHub Actions". No build step — plain HTML/CSS/JS.
