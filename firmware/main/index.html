@@ -50,6 +50,17 @@
       text-decoration: none;
     }
     .edit-link:hover { color: #c4a0ff; }
+
+    /* Webring links resolve on the relay (name.cute.tech/ring), so they only
+       work when viewed through the ring's own subdomain — not via local IP. */
+    .ring {
+      display: flex;
+      align-items: center;
+      gap: 1.2rem;
+      font-size: 0.5rem;
+    }
+    .ring a { color: #7b4fd4; text-decoration: none; }
+    .ring a:hover { color: #c4a0ff; }
   </style>
 </head>
 <body>
@@ -59,5 +70,11 @@
     <p>visit <a href="/edit">/edit</a> to make it yours.</p>
   </div>
   <a class="edit-link" href="/edit">edit this page →</a>
+  <div class="ring">
+    <a href="/ring?to=prev" title="previous cutie">←</a>
+    <a href="https://cute.tech">cute.tech webring</a>
+    <a href="/ring?to=random" title="random cutie">✦</a>
+    <a href="/ring?to=next" title="next cutie">→</a>
+  </div>
 </body>
 </html>

@@ -21,8 +21,10 @@
       background-image: radial-gradient(circle, #d4c8e8 1px, transparent 1px);
       background-size: 16px 16px;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 40px;
       overflow: hidden;
       font-family: 'Press Start 2P', monospace;
     }
@@ -68,6 +70,46 @@
       image-rendering: pixelated;
     }
 
+    #webring {
+      position: relative;
+      z-index: 1;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.6s;
+    }
+    #webring.show { opacity: 1; }
+
+    .ring-title {
+      font-size: 8px;
+      color: #a89ad4;
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+      user-select: none;
+    }
+
+    #ring-list {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      max-width: 520px;
+    }
+
+    #ring-list a {
+      font-size: 9px;
+      color: #2a1a3a;
+      text-decoration: none;
+      padding: 7px 9px;
+      background: #fffaf5;
+      border: 2px solid var(--c, #c9b8f7);
+      box-shadow: 3px 3px 0 var(--c, #c9b8f7);
+      image-rendering: pixelated;
+    }
+    #ring-list a:hover {
+      transform: translate(1px, 1px);
+      box-shadow: 2px 2px 0 var(--c, #c9b8f7);
+    }
+
     .pixel-float {
       position: fixed;
       bottom: -10px;
@@ -88,6 +130,11 @@
 <body>
 
   <h1>cute.tech</h1>
+
+  <div id="webring">
+    <div class="ring-title">✦ cuties online right now ✦</div>
+    <div id="ring-list"></div>
+  </div>
 
   <div id="cursor-eyes">
     <div class="eye"><div class="pupil"></div></div>
@@ -149,6 +196,28 @@
         `--drift:${drift}px;`;
       document.body.appendChild(el);
     }
+
+    // Webring: list devices that are live right now. Section stays hidden if
+    // the relay is unreachable or nobody is online.
+    const RELAY = ['localhost', '127.0.0.1'].includes(location.hostname)
+      ? 'http://127.0.0.1:8080'
+      : 'https://relay.cute.tech';
+
+    fetch(RELAY + '/status')
+      .then(r => r.json())
+      .then(({ online }) => {
+        if (!online || online.length === 0) return;
+        const list = document.getElementById('ring-list');
+        online.forEach((name, i) => {
+          const a = document.createElement('a');
+          a.href = `https://${name}.cute.tech`;
+          a.textContent = name;
+          a.style.setProperty('--c', colors[i % colors.length]);
+          list.appendChild(a);
+        });
+        document.getElementById('webring').classList.add('show');
+      })
+      .catch(() => {});
   </script>
 </body>
 </html>

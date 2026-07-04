@@ -6,6 +6,9 @@
 //   GET  /_ws?device=<name>&key=<secret>   Device WebSocket upgrade
 //   POST /register  {name, secret}          Register a device (admin token required)
 //   GET  /status                            List online device names
+//   GET  /ring?to=next|prev|random          Webring hop: 302 to a neighbouring
+//                                           online device (current device from
+//                                           Host subdomain, or ?me= override)
 //   GET  /known?domain=<fqdn>               Caddy on-demand TLS permission check
 //   GET  <anything else>                    Proxy to device named by Host subdomain
 
@@ -31,6 +34,13 @@ export default {
     // Status endpoint
     if (url.pathname === "/status" && request.method === "GET") {
       return handleStatus(request, env);
+    }
+
+    // Webring hop. Path-based like /status, so it works on every device
+    // subdomain and device pages can use plain relative links:
+    // <a href="/ring?to=next">. This reserves the /ring path on device sites.
+    if (url.pathname === "/ring" && request.method === "GET") {
+      return handleRing(request, env, url);
     }
 
     // Caddy on-demand TLS check: only allow certificates for the relay's own
@@ -108,10 +118,11 @@ async function handleRegister(request, env) {
   });
 }
 
-async function handleStatus(request, env) {
-  // Ask each registered device's DO whether it has a live connection.
-  // For simplicity: list all registered names and mark which DOs respond online.
-  // The DO exposes a /_status internal path we check.
+// Ask each registered device's DO whether it has a live connection.
+// For simplicity: list all registered names and mark which DOs respond online.
+// The DO exposes a /_status internal path we check. Sorted so the webring
+// order is stable.
+async function onlineDevices(env) {
   const names = [...devices.keys()];
   const online = [];
 
@@ -127,12 +138,43 @@ async function handleStatus(request, env) {
     }
   }));
 
-  return new Response(JSON.stringify({ online }), {
+  return online.sort();
+}
+
+async function handleStatus(request, env) {
+  return new Response(JSON.stringify({ online: await onlineDevices(env) }), {
     headers: {
       "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
     },
   });
+}
+
+// The ring is the alphabetical list of currently-online devices. Offline
+// devices and visitors without one (e.g. arriving from cute.tech) enter the
+// ring at its edge instead of erroring — a webring should never dead-end.
+async function handleRing(request, env, url) {
+  const host = request.headers.get("host") ?? "";
+  const me = url.searchParams.get("me") ?? host.split(".")[0];
+  const to = url.searchParams.get("to") ?? "next";
+
+  const ring = await onlineDevices(env);
+  const others = ring.filter((n) => n !== me);
+  if (others.length === 0) {
+    // Nobody else online — the ring is just you (or empty). Back to home.
+    return Response.redirect("https://cute.tech/", 302);
+  }
+
+  let dest;
+  const i = ring.indexOf(me);
+  if (to === "random") {
+    dest = others[Math.floor(Math.random() * others.length)];
+  } else if (to === "prev") {
+    dest = i >= 0 ? ring[(i - 1 + ring.length) % ring.length] : ring[ring.length - 1];
+  } else {
+    dest = i >= 0 ? ring[(i + 1) % ring.length] : ring[0];
+  }
+  return Response.redirect(`https://${dest}.cute.tech/`, 302);
 }
 
 // ── Durable Object ────────────────────────────────────────────────────────────

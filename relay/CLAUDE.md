@@ -16,7 +16,10 @@ Each device gets its own in-memory Durable Object instance. Last device to conne
 | `GET /_ws` | `?device=name&key=secret` | device secret | Device WebSocket upgrade |
 | `POST /register` | — | `Authorization: Bearer <ADMIN_TOKEN>` | Register a device name + secret |
 | `GET /status` | — | — | List currently online device names |
+| `GET /ring` | `?to=next\|prev\|random` | — | Webring hop: 302 to a neighbouring online device (current device from Host subdomain, or `?me=` override) |
 | `GET /known` | `?domain=fqdn` | — | Caddy on-demand TLS permission check |
+
+Path endpoints are matched before the Host-based proxy, so `/register`, `/status`, `/ring`, `/known` and `/_ws` are reserved — a device can't serve its own page at those paths. `/ring` relies on this: device pages link to it relatively (`<a href="/ring?to=next">`), no JS or CORS needed.
 
 ## Device registry
 
