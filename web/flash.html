@@ -191,6 +191,12 @@
         el.addEventListener("input", () => localStorage.setItem("cute-" + id, el.value));
       });
 
+      /* Bust the manifest cache on every page load; the manifest in turn
+         carries per-build ?v= hashes on the .bin URLs, so a reflash can
+         never install a stale cached firmware. */
+      const btn = document.getElementById("install-btn");
+      btn.setAttribute("manifest", "firmware/manifest.json?ts=" + Date.now());
+
       /* Workshop link can carry the code: cute.tech/flash#code=xyz
          (fragment, not query — it never leaves the browser) */
       const m = location.hash.match(/code=([^&]+)/);
