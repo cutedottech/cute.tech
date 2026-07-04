@@ -19,8 +19,7 @@ GitHub Pages site for cute.tech. Served from the `main` branch `/web` folder at 
 
 ## Firmware manifest
 
-`firmware/manifest.json` — referenced by esp-web-tools. Points to pre-built `.bin` files.
-Bins are committed to the repo so GitHub Pages can serve them statically.
+`firmware/manifest.json` — referenced by esp-web-tools. Paths are relative to the manifest and must stay inside `web/` (Pages publishes only this folder). The `.bin` files are committed next to it so GitHub Pages can serve them statically — after each firmware build, run `web/firmware/sync-bins.sh` to copy them in from `firmware/build/`, then commit.
 
 ## Style
 
