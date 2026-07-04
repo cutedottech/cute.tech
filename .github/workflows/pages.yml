@@ -32,5 +32,11 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
+      # deploy-pages intermittently fails with "Deployment failed, try again
+      # later" — give each push a second attempt before calling it failed.
       - id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - id: deployment-retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
