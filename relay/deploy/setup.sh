@@ -48,8 +48,10 @@ cp "$SRC_DIR/worker.js" "$SRC_DIR/config.capnp" "$RELAY_DIR/"
 chown -R cute-relay:cute-relay "$RELAY_DIR"
 
 # ── 4. Admin token (generated once, kept across re-runs) ────────────────────
+# Human-readable so it can be read off a projector at a workshop.
+# Rotate anytime with: sudo ./deploy/new-token.sh --install
 if [ ! -f "$ENV_FILE" ]; then
-  echo "ADMIN_TOKEN=$(openssl rand -hex 32)" > "$ENV_FILE"
+  echo "ADMIN_TOKEN=$("$SRC_DIR/deploy/new-token.sh")" > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
   echo "Generated new ADMIN_TOKEN in $ENV_FILE"
 fi
