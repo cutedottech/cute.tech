@@ -13,13 +13,41 @@
 //   GET  <anything else>                    Proxy to device named by Host subdomain
 
 // Device registry: name → secret. Module-level because workerd bindings are
-// read-only config, not mutable state. Lives as long as the workerd process;
-// restart wipes it and devices must re-register.
+// read-only config, not mutable state. Mirrored to data/devices.json via the
+// REGISTRY disk service so restarts don't strand registered devices.
 const devices = new Map();
+let registryLoad = null;
+
+function loadRegistry(env) {
+  registryLoad ??= (async () => {
+    try {
+      const res = await env.REGISTRY.fetch("http://registry/devices.json");
+      if (res.status === 404) return; // first boot, nothing saved yet
+      if (!res.ok) throw new Error(`disk read failed: ${res.status}`);
+      for (const [name, secret] of Object.entries(await res.json())) {
+        devices.set(name, secret);
+      }
+    } catch (err) {
+      // Unreadable/corrupt file: serve with an empty registry rather than
+      // going down — devices can re-register.
+      console.error("registry load failed:", err.message ?? err);
+    }
+  })();
+  return registryLoad;
+}
+
+async function saveRegistry(env) {
+  const res = await env.REGISTRY.fetch("http://registry/devices.json", {
+    method: "PUT",
+    body: JSON.stringify(Object.fromEntries(devices)),
+  });
+  if (!res.ok) throw new Error(`disk write failed: ${res.status}`);
+}
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    await loadRegistry(env);
 
     // Registration endpoint. The flash page calls this from another origin
     // (cute.tech or localhost), so it needs CORS headers — and the
@@ -113,6 +141,13 @@ async function handleRegister(request, env) {
   }
 
   devices.set(name, secret);
+  try {
+    await saveRegistry(env);
+  } catch (err) {
+    // The in-memory registration still works until the next restart, and
+    // failing here would block the participant mid-flash. Log and carry on.
+    console.error("registry save failed:", err.message ?? err);
+  }
   return new Response(JSON.stringify({ ok: true, name }), {
     headers: { "Content-Type": "application/json", ...CORS_HEADERS },
   });

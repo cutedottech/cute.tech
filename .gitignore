@@ -16,6 +16,7 @@ firmware/dependencies.lock
 devices.json
 config.txt
 relay/devices.json
+relay/data/
 
 # Node
 node_modules/

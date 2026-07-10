@@ -10,6 +10,11 @@ using Workerd = import "/workerd/workerd.capnp";
 const config :Workerd.Config = (
   services = [
     (name = "main", worker = .mainWorker),
+    # Writable directory the worker mirrors the device registry into
+    # (data/devices.json), so restarts don't strand registered devices.
+    # Path is relative to workerd's working directory: /opt/cute-relay in
+    # production (systemd WorkingDirectory), relay/ for npm run dev.
+    (name = "registry-disk", disk = (path = "data", writable = true)),
   ],
   sockets = [
     # Plain HTTP, loopback only — Caddy (or local curl) is the only client.
@@ -29,5 +34,6 @@ const mainWorker :Workerd.Worker = (
   bindings = [
     (name = "RELAY", durableObjectNamespace = "RelayObject"),
     (name = "ADMIN_TOKEN", fromEnvironment = "ADMIN_TOKEN"),
+    (name = "REGISTRY", service = "registry-disk"),
   ],
 );

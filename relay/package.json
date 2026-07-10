@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "ADMIN_TOKEN=dev-token workerd serve config.capnp"
+    "dev": "mkdir -p data && ADMIN_TOKEN=dev-token workerd serve config.capnp"
   },
   "devDependencies": {
     "workerd": "latest"

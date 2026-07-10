@@ -43,7 +43,7 @@ fi
 id -u cute-relay >/dev/null 2>&1 || \
   useradd --system --home "$RELAY_DIR" --shell /usr/sbin/nologin cute-relay
 
-mkdir -p "$RELAY_DIR"
+mkdir -p "$RELAY_DIR" "$RELAY_DIR/data"   # data/ = persisted device registry
 cp "$SRC_DIR/worker.js" "$SRC_DIR/config.capnp" "$RELAY_DIR/"
 chown -R cute-relay:cute-relay "$RELAY_DIR"
 

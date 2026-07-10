@@ -6,12 +6,15 @@ Wants=network-online.target
 [Service]
 User=cute-relay
 EnvironmentFile=/etc/cute-relay.env
+# WorkingDirectory anchors the relative "data" disk path in config.capnp
+WorkingDirectory=/opt/cute-relay
 ExecStart=/usr/local/bin/workerd serve /opt/cute-relay/config.capnp
 Restart=always
 RestartSec=2
-# Hardening — the relay needs no filesystem access beyond its own config
+# Hardening — read-only filesystem except the device registry directory
 NoNewPrivileges=true
 ProtectSystem=strict
+ReadWritePaths=/opt/cute-relay/data
 ProtectHome=true
 PrivateTmp=true
 

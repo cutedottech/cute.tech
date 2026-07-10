@@ -23,7 +23,7 @@ Path endpoints are matched before the Host-based proxy, so `/register`, `/status
 
 ## Device registry
 
-Devices are registered dynamically via `POST /register`. For a workshop, the browser flash tool calls this automatically after generating the device secret. The registry is a module-level `Map` in worker.js (workerd bindings are read-only config, so mutable state must live in JS). It resets when workerd restarts — devices must then re-register. Fine for a workshop; for persistent deployment, persist to disk via a workerd disk service.
+Devices are registered dynamically via `POST /register`. For a workshop, the browser flash tool calls this automatically after generating the device secret. The registry is a module-level `Map` in worker.js (workerd bindings are read-only config, so mutable state must live in JS), mirrored to `data/devices.json` through the `registry-disk` disk service: loaded lazily on the first request after startup, written through on every registration. Restarts therefore don't strand devices. The `data` path is relative to workerd's working directory — `relay/` in dev (`npm run dev` creates it), `/opt/cute-relay` in production (systemd `WorkingDirectory`; `ReadWritePaths` punches it through `ProtectSystem=strict`).
 
 ## Running locally
 
