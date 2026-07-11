@@ -17,9 +17,8 @@ Each device gets its own in-memory Durable Object instance. Last device to conne
 | `POST /register` | — | `Authorization: Bearer <ADMIN_TOKEN>` | Register a device name + secret |
 | `GET /status` | — | — | List currently online device names |
 | `GET /ring` | `?to=next\|prev\|random` | — | Webring hop: 302 to a neighbouring online device (current device from Host subdomain, or `?me=` override) |
-| `GET /known` | `?domain=fqdn` | — | Caddy on-demand TLS permission check |
 
-Path endpoints are matched before the Host-based proxy, so `/register`, `/status`, `/ring`, `/known` and `/_ws` are reserved — a device can't serve its own page at those paths. `/ring` relies on this: device pages link to it relatively (`<a href="/ring?to=next">`), no JS or CORS needed.
+Path endpoints are matched before the Host-based proxy, so `/register`, `/status`, `/ring` and `/_ws` are reserved — a device can't serve its own page at those paths. `/ring` relies on this: device pages link to it relatively (`<a href="/ring?to=next">`), no JS or CORS needed.
 
 ## Device registry
 
@@ -43,7 +42,7 @@ ssh user@vps "cd cute-relay && sudo ./deploy/setup.sh"
 
 The script installs workerd + Caddy, creates a `cute-relay` system user, generates an `ADMIN_TOKEN` into `/etc/cute-relay.env` (kept across re-runs), and starts both as systemd services. Re-running it deploys updated worker code.
 
-TLS: Caddy issues per-subdomain certs **on demand** (no wildcard cert, no DNS API). Before issuing, it checks the relay's `/known` endpoint so only `relay.cute.tech` and registered device names get certs — protects the Let's Encrypt rate limit from subdomain scanners.
+TLS: Caddy holds a single **wildcard cert** for `*.cute.tech`, obtained via a DNS-01 challenge through Cloudflare (needs `caddy add-package github.com/caddy-dns/cloudflare` and a `CF_API_TOKEN` scoped to Zone:DNS:Edit — both handled by `setup.sh`, which will stop and prompt on first run if the token isn't in `/etc/caddy/cloudflare.env` yet).
 
 DNS: `*.cute.tech A <VPS IP>` wildcard record. The apex `cute.tech` stays pointed at GitHub Pages.
 

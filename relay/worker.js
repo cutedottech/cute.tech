@@ -9,7 +9,6 @@
 //   GET  /ring?to=next|prev|random          Webring hop: 302 to a neighbouring
 //                                           online device (current device from
 //                                           Host subdomain, or ?me= override)
-//   GET  /known?domain=<fqdn>               Caddy on-demand TLS permission check
 //   GET  <anything else>                    Proxy to device named by Host subdomain
 
 // Device registry: name → secret. Module-level because workerd bindings are
@@ -69,17 +68,6 @@ export default {
     // <a href="/ring?to=next">. This reserves the /ring path on device sites.
     if (url.pathname === "/ring" && request.method === "GET") {
       return handleRing(request, env, url);
-    }
-
-    // Caddy on-demand TLS check: only allow certificates for the relay's own
-    // hostname and registered devices, so subdomain scanners can't burn
-    // through the Let's Encrypt rate limit (50 certs/domain/week).
-    if (url.pathname === "/known" && request.method === "GET") {
-      const domain = url.searchParams.get("domain") ?? "";
-      const name = domain.split(".")[0];
-      const ok = domain.endsWith(".cute.tech") &&
-        (name === "relay" || devices.has(name));
-      return new Response(ok ? "ok" : "unknown", { status: ok ? 200 : 404 });
     }
 
     // Device WebSocket upgrade

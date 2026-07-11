@@ -39,6 +39,40 @@ if ! command -v caddy >/dev/null; then
   apt-get install -y caddy
 fi
 
+# The apt build doesn't include DNS provider plugins; the wildcard cert needs
+# the Cloudflare one for its DNS-01 challenge. `add-package` rebuilds the
+# binary in place via Caddy's own package server and keeps the apt-installed
+# systemd unit, user, and log setup intact.
+if ! caddy list-modules 2>/dev/null | grep -q '^dns.providers.cloudflare$'; then
+  echo "Adding Cloudflare DNS module to Caddy..."
+  caddy add-package github.com/caddy-dns/cloudflare
+fi
+
+# Cloudflare API token for the DNS-01 challenge — scoped to Zone:DNS:Edit for
+# the cute.tech zone only. Can't be generated like ADMIN_TOKEN; create it at
+# https://dash.cloudflare.com/profile/api-tokens and drop it in below.
+CF_ENV_FILE=/etc/caddy/cloudflare.env
+if [ ! -f "$CF_ENV_FILE" ]; then
+  cat > "$CF_ENV_FILE" <<'EOF'
+# Cloudflare API token, scoped to Zone:DNS:Edit for the cute.tech zone only.
+# Create one at https://dash.cloudflare.com/profile/api-tokens
+CF_API_TOKEN=
+EOF
+  chmod 600 "$CF_ENV_FILE"
+  echo "Created $CF_ENV_FILE — add your Cloudflare API token, then re-run this script." >&2
+  exit 1
+fi
+if ! grep -q '^CF_API_TOKEN=.\+' "$CF_ENV_FILE"; then
+  echo "$CF_ENV_FILE exists but CF_API_TOKEN is empty — add it, then re-run." >&2
+  exit 1
+fi
+
+mkdir -p /etc/systemd/system/caddy.service.d
+cat > /etc/systemd/system/caddy.service.d/cloudflare.conf <<EOF
+[Service]
+EnvironmentFile=$CF_ENV_FILE
+EOF
+
 # ── 3. Relay user + files ────────────────────────────────────────────────────
 id -u cute-relay >/dev/null 2>&1 || \
   useradd --system --home "$RELAY_DIR" --shell /usr/sbin/nologin cute-relay
@@ -63,7 +97,7 @@ cp "$SRC_DIR/deploy/cute-relay.service" /etc/systemd/system/cute-relay.service
 systemctl daemon-reload
 systemctl enable --now cute-relay
 systemctl restart cute-relay   # pick up new worker.js on re-runs
-systemctl reload-or-restart caddy
+systemctl restart caddy   # not reload — the cloudflare.conf drop-in needs a fresh process
 
 echo
 echo "── Done ─────────────────────────────────────────────────────────────"

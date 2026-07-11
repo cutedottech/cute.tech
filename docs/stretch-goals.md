@@ -31,3 +31,30 @@ Simpler precursor (also undone): a dependency-free sync CLI (`pull` / `push` /
 `watch`) against the same API, for people who want their local editor. Files
 cap at 256 KB (`MAX_UPLOAD` in firmware/main/server.c) and the relay handles
 one request at a time, so uploads must be sequential.
+
+## Hardware API — pages that can script their own peripherals
+
+Because a participant's page is served by the device itself, page JS can call
+the device's API same-origin: hardware access from their own site is just
+`fetch()`. Expose a hardware namespace on the firmware HTTP server:
+
+- `GET/POST /api/pin/{n}` — Arduino-style digital read/write, `?mode=in|in_pullup|out`
+- `GET /api/touch/{n}` — ESP32-S3 native capacitive touch (GPIO 1–14; XIAO pads are 1–9)
+- `GET /api/temp` — internal temperature sensor
+- `GET/POST /api/led` — user LED (GPIO 21 on XIAO)
+- `GET /api/photo` — OV2640 JPEG capture on XIAO Sense (espressif/esp32-camera component)
+- `GET /api/features` — boot-time capability detection (camera/OLED/touch), same
+  single-binary philosophy as the OLED probe in display.c
+
+Plus an embedded `/cute.js` helper (like editor.html) so pages write
+`cute.led(true)`, `await cute.touch(3)`, `img.src = await cute.photo()`.
+
+Constraints & decisions:
+- Relay is JSON-text frames, one request at a time, 10 s timeout: single photos
+  need a `body_b64` field in relay_client.c + worker.js (~33% inflation, fine
+  with PSRAM); live MJPEG streaming is local-network only. Cap photos ~VGA.
+- Reads + LED public (mischief is a feature); raw pin writes gated by the
+  `?key=` edit password and a per-board safe-pin allowlist (avoid strapping,
+  flash/PSRAM, camera/mic pins).
+
+
